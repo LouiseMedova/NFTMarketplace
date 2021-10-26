@@ -8,7 +8,7 @@ async function deployMarket() {
 	for (const k in envConfig) {
 		process.env[k] = envConfig[k]
 	}
-	const token = process.env.TOKEN_ADDRESS as string;
+    const token = process.env.TOKEN_ADDRESS as string;
     const nft = process.env.NFT_ADDRESS as string;
 	const Marketplace = await ethers.getContractFactory('Marketplace')
 	console.log('starting deploying market...')
