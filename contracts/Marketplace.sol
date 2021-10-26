@@ -7,11 +7,15 @@ import './NFT.sol';
 contract Marketplace is AccessControl {
     bytes32 public constant ARTIST_ROLE = keccak256("ARTIST");
     mapping (uint => Item) public items;
+    mapping(uint => Auction) public auctions;
     mapping (uint => address) public itemIdToOwner;
-    address public addressOfToken;
+    uint public auctionId;
+    address public tokenAddress;
+    address public nftAddress;
     uint public itemId;
-    constructor (address _addressOfToken) {
-        addressOfToken = _addressOfToken;
+    constructor (address _tokenAddress, address _nftAddress) {
+        tokenAddress = _tokenAddress;
+        nftAddress = _nftAddress;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
@@ -22,7 +26,6 @@ contract Marketplace is AccessControl {
 
     struct Item {
         uint tokenId;
-        address nftAddress;
         address creator;
         address owner;
         uint itemId;
@@ -30,105 +33,105 @@ contract Marketplace is AccessControl {
         uint date;
         bool primarySale;
         uint price;
-        uint fee;
-  }
+    }
+    struct Auction {
+        uint itemId;
+        uint minPrice;
+        address seller;
+        uint startDate;
+        uint duration;
+        uint currentBestBid;
+        address currentRecipient;
+    }
+
     event ItemCreated (
         uint tokenId,
-        address nftAddress,
         address creator,
-        uint price,
-        uint fee
+        uint price
     );
 
-    event PrimarySaleStarted (
+    event SaleStarted (
         uint tokenId,
-        address nftAddress,
-        address creator,
-        uint price,
-        uint fee
+        address seller,
+        uint price
     );
 
     event Sale (
         uint tokenId,
-        address nftAddress,
         address seller,
         address buyer,
         bool primarySale,
         uint price
     );
 
+    event AuctionStarted (
+        uint tokenId,
+        address nftSeller,
+        uint minPrice
+    );
+
+    event Bid (
+        uint auctionId,
+        uint currentBestPrize,
+        address currentRecipient
+    );
+
+    event AuctionEnded (
+        uint tokenId,
+        uint price,
+        address winner
+    );
+
     /// @dev Creates NFT
-    /// @param _nftAddress The address on NFT contract
     /// @param _tokenURI Metadata URI of NFT
-    /// @param _price The price of NFT
     /// @param _fee Royalty payment to the creator (in percents)
     function createNFT(
-        address _nftAddress, 
         string memory _tokenURI,
-        uint _price,
         uint _fee) 
-        onlyRole(ARTIST_ROLE)
         public  {
-            require(_price > 0, '_price must be > 0');
-            uint tokenId = NFT(_nftAddress).totalSupply();
-            NFT(_nftAddress).createToken(msg.sender, _tokenURI);
+            uint tokenId = NFT(nftAddress).totalSupply();
+            NFT(nftAddress).createToken(msg.sender, _tokenURI, _fee);
             itemIdToOwner[itemId] = msg.sender;
             items[itemId] = Item(
                 tokenId,
-                _nftAddress,
                 msg.sender,
                 msg.sender,
                 itemId,
                 State.FROZEN,
                 block.timestamp,
                 false,
-                _price,
-                _fee
+                0
             );
             itemId++;
             emit ItemCreated (
                 tokenId,
-                _nftAddress,
                 msg.sender,
-                _price,
-                _fee
-            );
-        }
-
-    /// @dev Opens primary sale of NFT
-    /// @param _itemId The ID of the NFT Item
-    function startPrimarySale(uint _itemId) 
-        onlyRole(ARTIST_ROLE)
-        exists(_itemId)
-        onlyCreator(_itemId)
-        public {
-            Item storage item = items[_itemId];
-            require(item.primarySale == false, 'Primary sale was already done');
-            items[_itemId].state = State.SALE;
-            emit PrimarySaleStarted (
-                item.tokenId,
-                item.nftAddress,
-                item.creator,
-                item.price,
-                item.fee
+                0
             );
         }
 
     /// @dev Starts secondary sales
     /// @param _itemId The ID of the NFT Item
     /// @param _price The price of the NFT
-    function startSale(uint _itemId, uint _price) onlyOwner(_itemId) public {
-        require(items[_itemId].primarySale == true, 'There was no primary sale');
+    function startSale(uint _itemId, uint _price) 
+        exists(_itemId)
+        ifItemOwner(_itemId) 
+        public {
         require(_price > 0, '_price must be > 0');
         items[_itemId].state = State.SALE;
         items[_itemId].price = _price;
+        emit SaleStarted(
+            items[_itemId].tokenId, 
+            items[_itemId].owner, 
+            items[_itemId].price
+        );
     }
 
     /// @dev Stops sale
     /// @param _itemId The ID of the NFT Item
     function stopSale(uint _itemId) 
         exists(_itemId)
-        onlyOwner(_itemId)
+        ifItemOwner(_itemId)
         public {
             items[_itemId].state = State.FROZEN;
         }
@@ -137,26 +140,19 @@ contract Marketplace is AccessControl {
     function buyNFT(uint _itemId) exists(_itemId) public {
         Item storage item = items[_itemId];
         require(item.state != State.FROZEN, 'The item must not be frozened');
-        uint balance = Token(addressOfToken).balanceOf(msg.sender);
-        require(balance >= item.price, 'the balance of a caller must be >= the price item');
         bool primarySale = item.primarySale;
         address previousOwner = item.owner;
         if(primarySale == false) {
-            Token(addressOfToken).transferFrom(msg.sender, item.creator, item.price);
-            NFT(item.nftAddress).transferFrom(item.creator, msg.sender, item.tokenId);
+            Token(tokenAddress).transferFrom(msg.sender, item.creator, item.price);
+            NFT(nftAddress).transferFrom(item.creator, msg.sender, item.tokenId);
             items[_itemId].primarySale = true;
         } else {
-            uint payToOwner = (item.price*(100 - item.fee)) / 100;
-            uint payToCreator = (item.price * item.fee) / 100;
-            Token(addressOfToken).transferFrom(msg.sender, item.owner, payToOwner);
-            Token(addressOfToken).transferFrom(msg.sender, item.creator, payToCreator);
-            NFT(item.nftAddress).transferFrom(item.owner, msg.sender, item.tokenId);    
+            NFT(nftAddress).transferWithRoaylties(item.owner, msg.sender, item.price, item.tokenId); 
         }
         items[_itemId].owner = msg.sender;
         items[_itemId].state = State.FROZEN;
         emit Sale (
             item.tokenId,
-            item.nftAddress,
             previousOwner,
             msg.sender,
             primarySale,
@@ -164,13 +160,88 @@ contract Marketplace is AccessControl {
         );
     }
 
+    /// @dev Buys NFT item
+    /// @param _itemId The ID of the NFT Item
+    /// @param _minPrice The initial price for the NFT Item
+    /// @param _duration The duration of the NFT
+    function startAuction(
+        uint _itemId,
+        uint _minPrice,
+        uint _duration) 
+        ifItemOwner(_itemId)
+        exists(_itemId) external {
+            require(_minPrice > 0, "_minPrice  must be > 0");
+            require(_duration >= 86400, "_duration must be more the one day");
+            auctions[auctionId] = Auction(
+                _itemId,
+                _minPrice,
+                items[_itemId].owner,
+                block.timestamp,
+                _duration,
+                0,
+                items[_itemId].owner
+            );
+            auctionId++;
+            emit AuctionStarted(
+                _itemId,
+                items[_itemId].owner,
+                _minPrice
+            );
+        }
+    /// @dev Makes BID event and updates the current auction state
+    /// @param _auctionId The ID of the auction
+    /// @param _bid Placed bid
+    function makeBid(uint _auctionId, uint _bid) external {
+        _updateCurrentBid(_auctionId, _bid);
+        emit Bid(
+            _auctionId,
+            auctions[_auctionId].currentBestBid,
+            auctions[_auctionId].currentRecipient
+        );
+    }
+
+    ///@dev transfers NFT to the auction winner
+    ///@dev if no bets have been made, it remains with the owner
+    /// @param _auctionId The ID of the auction
+    function settleNFT(uint _auctionId) external {
+        Auction memory auction = auctions[_auctionId];
+        require(block.timestamp > (auction.startDate + auction.duration), 'that auction must be have ended');
+        if(auction.seller != auction.currentRecipient) {
+            Token(tokenAddress).transferFrom(auction.currentRecipient, auction.seller, auction.currentBestBid);
+            NFT(nftAddress).transferFrom(auction.seller, auction.currentRecipient, auction.itemId);
+            items[auction.itemId].owner = auction.currentRecipient;
+            items[auction.itemId].price = auction.currentBestBid;
+            items[auction.itemId].state = State.FROZEN;
+            items[auction.itemId].primarySale = true;
+            emit AuctionEnded (
+                auction.itemId,
+                auction.currentBestBid,
+                auction.currentRecipient
+            );
+        }
+    }
+
+    /// @dev Checks that auction exists, has not ended, the offered bid is higher than the current one  and a user has enough funds 
+    /// @dev Updates the current auction state
+    /// @param _auctionId The ID of the auction
+    /// @param _bid Placed bid
+    function  _updateCurrentBid(uint _auctionId, uint _bid) internal {
+        Auction memory auction = auctions[_auctionId];
+        require(auction.minPrice > 0, 'that auction does not exist');
+        require(_bid > auction.currentBestBid, 'the offered bid must be higher the current one');
+        require(block.timestamp < (auction.startDate + auction.duration), 'that auction has ended');
+        uint balance = Token(tokenAddress).balanceOf(msg.sender);
+        require(balance >= _bid, 'the balance of a caller must be enough for that bid');
+        auctions[_auctionId].currentBestBid = _bid;
+        auctions[_auctionId].currentRecipient = msg.sender;
+    }
 
     modifier exists(uint _itemId) {
         require(itemIdToOwner[_itemId] != address(0), 'That item does not exist');
         _;
     }
 
-    modifier onlyOwner(uint _itemId) {
+    modifier ifItemOwner(uint _itemId) {
         require(items[_itemId].owner == msg.sender, 'A caller must be the owner of that item');
         _;
     }
