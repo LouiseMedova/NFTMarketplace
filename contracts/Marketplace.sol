@@ -6,44 +6,13 @@ import './NFT.sol';
 
 contract Marketplace is AccessControl {
     bytes32 public constant ARTIST_ROLE = keccak256("ARTIST");
-    mapping (uint => Item) public items;
-    mapping(uint => Auction) public auctions;
-    mapping (uint => address) public itemIdToOwner;
+
     uint public auctionId;
     address public tokenAddress;
     address public nftAddress;
     uint public itemId;
-    constructor (address _tokenAddress, address _nftAddress) {
-        tokenAddress = _tokenAddress;
-        nftAddress = _nftAddress;
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-    }
 
-    enum State  {
-        FROZEN,
-        SALE
-    }
-
-    struct Item {
-        uint tokenId;
-        address creator;
-        address owner;
-        uint itemId;
-        State state;
-        uint date;
-        bool primarySale;
-        uint price;
-    }
-    struct Auction {
-        uint itemId;
-        uint minPrice;
-        address seller;
-        uint startDate;
-        uint duration;
-        uint currentBestBid;
-        address currentRecipient;
-    }
-
+    //events
     event ItemCreated (
         uint tokenId,
         address creator,
@@ -81,6 +50,57 @@ contract Marketplace is AccessControl {
         uint price,
         address winner
     );
+
+    //function modifiers
+    modifier exists(uint _itemId) {
+        require(itemIdToOwner[_itemId] != address(0), 'That item does not exist');
+        _;
+    }
+
+    modifier ifItemOwner(uint _itemId) {
+        require(items[_itemId].owner == msg.sender, 'A caller must be the owner of that item');
+        _;
+    }
+
+     modifier onlyCreator(uint _itemId) {
+        require(items[_itemId].creator == msg.sender, 'A caller must be the creator of that item');
+        _;
+    }
+
+    enum State  {
+        FROZEN,
+        SALE
+    }
+
+    struct Item {
+        uint tokenId;
+        address creator;
+        address owner;
+        uint itemId;
+        State state;
+        uint date;
+        bool primarySale;
+        uint price;
+    }
+    struct Auction {
+        uint itemId;
+        uint minPrice;
+        address seller;
+        uint startDate;
+        uint duration;
+        uint currentBestBid;
+        address currentRecipient;
+    }
+
+    mapping (uint => Item) public items;
+    mapping(uint => Auction) public auctions;
+    mapping (uint => address) public itemIdToOwner;
+    
+    constructor (address _tokenAddress, address _nftAddress) {
+        tokenAddress = _tokenAddress;
+        nftAddress = _nftAddress;
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
 
     /// @dev Creates NFT
     /// @param _tokenURI Metadata URI of NFT
@@ -235,20 +255,4 @@ contract Marketplace is AccessControl {
         auctions[_auctionId].currentBestBid = _bid;
         auctions[_auctionId].currentRecipient = msg.sender;
     }
-
-    modifier exists(uint _itemId) {
-        require(itemIdToOwner[_itemId] != address(0), 'That item does not exist');
-        _;
-    }
-
-    modifier ifItemOwner(uint _itemId) {
-        require(items[_itemId].owner == msg.sender, 'A caller must be the owner of that item');
-        _;
-    }
-
-     modifier onlyCreator(uint _itemId) {
-        require(items[_itemId].creator == msg.sender, 'A caller must be the creator of that item');
-        _;
-    }
-
 }

@@ -1,6 +1,6 @@
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
-import { ethers, network, upgrades } from 'hardhat'
-import { expect, assert } from 'chai'
+import { ethers, network } from 'hardhat'
+import { expect } from 'chai'
 
 import BigNumber from 'bignumber.js'
 BigNumber.config({ EXPONENTIAL_AT: 60 })
