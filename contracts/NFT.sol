@@ -6,7 +6,6 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./Token.sol";
 
-
 contract NFT is ERC721Enumerable, ERC721URIStorage, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER");
     bytes32 public constant ARTIST_ROLE = keccak256("ARTIST");
@@ -76,6 +75,5 @@ contract NFT is ERC721Enumerable, ERC721URIStorage, AccessControl {
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
-    }
-      
+    }     
 }
