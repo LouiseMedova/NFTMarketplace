@@ -1,3 +1,5 @@
 import './Auction'
 import './CreateBuySale'
 import './GiveRoles'
+import './Token'
+import './NFT'

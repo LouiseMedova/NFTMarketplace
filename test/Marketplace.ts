@@ -1,5 +1,5 @@
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
-import { ethers, network, upgrades } from 'hardhat'
+import { ethers, network } from 'hardhat'
 import { expect, assert } from 'chai'
 import BigNumber from 'bignumber.js'
 BigNumber.config({ EXPONENTIAL_AT: 60 })
@@ -33,7 +33,7 @@ describe('Contract: Market', () => {
 		token = await Token.deploy('My Custom Token', 'MCT') as Token
 
 		let NFT = await ethers.getContractFactory('NFT')
-		nft = await NFT.deploy('My First NFT', 'MFN','https://', token.address) as NFT
+		nft = await NFT.deploy('My First NFT', 'MFN','https://') as NFT
 
 		let Marketplace = await ethers.getContractFactory('Marketplace')
 		market = await Marketplace.deploy(token.address, nft.address) as Marketplace
@@ -41,7 +41,7 @@ describe('Contract: Market', () => {
 		const artist_role = web3.utils.keccak256("ARTIST")
 		const minter = web3.utils.keccak256("MINTER")
 		await nft.grantRole(minter, market.address);
-		await market.grantRole(artist_role, artist.address);
+		await nft.grantRole(artist_role, artist.address);
 		// approve marketplace to transfer NFTs of users
 		await nft.connect(artist).setApprovalForAll(market.address, true);
 		await nft.connect(user1).setApprovalForAll(market.address, true);
@@ -81,18 +81,28 @@ describe('Contract: Market', () => {
 					100
 			)
 		})
+
 		it('should revert if initial price <= 0', async () => {
 			await expect(
 				market.connect(artist).startAuction(0, 0, 86400))
 					.to
 					.be.revertedWith('_minPrice  must be > 0')
-		})	
+		})
+
 		it('should revert if auction duration less than one day', async () => {
 			await expect(
 				market.connect(artist).startAuction(0, 100, 86300))
 					.to
-					.be.revertedWith('_duration must be more the one day')
+					.be.revertedWith('_duration must be more than one day')
 		})	
+
+		it('should revert if a caller is not the token owner', async() => {
+			await expect(
+				market.connect(user1).startAuction(0, 100, 86400))
+					.to
+					.be.revertedWith('A caller must be the owner of that token')
+		})
+
 		it('should make bid', async () => {
 			await market.connect(artist).startAuction(0, 100, 86400);
 			await expect(market.connect(user1).makeBid(0, 101))
@@ -105,13 +115,15 @@ describe('Contract: Market', () => {
 			const auction = await market.auctions(0);
 			expect(auction.currentBestBid).to.equal(101);
 			expect(auction.currentRecipient).to.equal(user1.address)
-		})	
+		})
+
 		it('should revert if user makes bid for the auction that does not exist', async () => {
 			await expect(
 				market.connect(user1).makeBid(0, 101))
 					.to
 					.be.revertedWith('that auction does not exist')
 		})
+
 		it('should revert if the offered bid is lower than the current one', async() => {
 			await market.connect(artist).startAuction(0, 100, 86400);
 			await market.connect(user1).makeBid(0, 200)
@@ -120,6 +132,7 @@ describe('Contract: Market', () => {
 					.to
 					.be.revertedWith('the offered bid must be higher the current one')
 		})
+
 		it('should revert if user makes bid for the auction that has expired', async () => {
 			await market.connect(artist).startAuction(0, 100, 86400);
 			await network.provider.send("evm_increaseTime", [86401])
@@ -128,6 +141,7 @@ describe('Contract: Market', () => {
 					.to
 					.be.revertedWith('that auction has ended')
 		})
+
 		it('should revert if user balance is not enough for that bid', async() => {
 			await market.connect(artist).startAuction(0, 100, 86400);
 			await expect(
@@ -135,6 +149,7 @@ describe('Contract: Market', () => {
 					.to
 					.be.revertedWith('the balance of a caller must be enough for that bid')
 		})
+
 		it('should not settle NFT if auction is going on', async () => {
 			await market.connect(artist).startAuction(0, 100, 86400);
 			await market.connect(user1).makeBid(0, 101);
@@ -143,6 +158,7 @@ describe('Contract: Market', () => {
 					.to
 					.be.revertedWith('that auction must be have ended')
 		})
+
 		it('Full auction from the beginning to the end', async() => {
 			//owner starts auction
 			await market.connect(artist).startAuction(0, 100, 86400);
@@ -162,76 +178,57 @@ describe('Contract: Market', () => {
 					1000,
 					user1.address
 				);
-			const item = await market.items(0);
+			const item = await market.tokenIdToItems(0);
 			expect(item.owner).to.equal(user1.address);
 			expect(item.price).to.equal(1000);
 			expect(await nft.balanceOf(user1.address)).to.equal(1)
 			expect(await token.balanceOf(user1.address)).to.equal(0)
 			expect(await token.balanceOf(artist.address)).to.equal(1000)
-
 		})
 	})
+
 	describe('Sale', () => {
 		it('should start sale', async () => {
-			const item = await market.items(0);
+			const item = await market.tokenIdToItems(0);
 			await expect(market.connect(artist).startSale(0, 500))
 			.to.emit(market, 'SaleStarted')
 			.withArgs(
-				item.tokenId,
+				0,
 				item.owner,
 				500
 			)
 		})
+
 		it('should revert if item does not exist', async () => {
 			await expect(
 				market.connect(artist).startSale(1, 500))
 					.to
 					.be.revertedWith('That item does not exist')
 		})
+
 		it('should stop sale', async() => {
 			await market.connect(artist).stopSale(0)
-			const item = await market.items(0);
+			const item = await market.tokenIdToItems(0);
 			expect(item.state).to.equal(0);
 		})		
 	})
+
 	describe('Buy NFT', () => {
-		it('should buy NFT in primary market', async () => {
-			const item = await market.items(0);
-			token.transfer(user1.address, 1000);
-			token.connect(user1).approve(market.address, 100);
-			const balanceBefore = await token.balanceOf(artist.address);
-			await market.connect(artist).startSale(0, 50);
-			await expect(market.connect(user1).buyNFT(0))
-				.to.emit(market, 'Sale')
-				.withArgs(
-					item.tokenId,
-					item.owner,
-					user1.address,
-					false,
-					50
-				)
-			const itemAfter = await market.items(0);
-			const balanceAfter = await token.balanceOf(artist.address);
-			expect(itemAfter.owner).to.equal(user1.address);
-			expect(itemAfter.primarySale).to.equal(true);
-			expect(balanceAfter.sub(balanceBefore)).to.equal(50)
-		})
-		it('should buy NFT in secondary market', async () => {	
+		it('should buy NFT', async () => {	
 			token.connect(user2).approve(nft.address, 100);
 
 			await market.connect(artist).startSale(0, 50);
 			await market.connect(user1).buyNFT(0);
 			await market.connect(user1).startSale(0,100);
 
-			const item = await market.items(0);			
+			const item = await market.tokenIdToItems(0);			
 			
 			await expect(market.connect(user2).buyNFT(0))
 				.to.emit(market, 'Sale')
 				.withArgs(
-					item.tokenId,
+					0,
 					user1.address,
 					user2.address,
-					true,
 					item.price
 				)
 			const artistBalance = await token.balanceOf(artist.address);
@@ -239,12 +236,14 @@ describe('Contract: Market', () => {
 			expect(artistBalance).to.equal(55);
 			expect(sellerBalance).to.equal(1045);			
 		})	
+
 		it('should revert if item does not exist', async () => {
 			await expect(
 				market.connect(user1).buyNFT(1))
 					.to
 					.be.revertedWith('That item does not exist')		
 		})	
+		
 		it('should revert if item is frozened', async () => {
 			await expect(
 				market.connect(user1).buyNFT(0))

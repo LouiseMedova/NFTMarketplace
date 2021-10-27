@@ -2,14 +2,14 @@ import { Marketplace } from '../typechain'
 import {ethers, run} from 'hardhat'
 import {delay} from '../utils'
 import { dotenv, fs } from "./imports";
-
-async function deployMarket() {
-    const envConfig = dotenv.parse(fs.readFileSync(".env"))
+const envConfig = dotenv.parse(fs.readFileSync(".env"))
 	for (const k in envConfig) {
 		process.env[k] = envConfig[k]
 	}
-    const token = process.env.TOKEN_ADDRESS as string;
-    const nft = process.env.NFT_ADDRESS as string;
+const token = process.env.TOKEN_ADDRESS as string;
+const nft = process.env.NFT_ADDRESS as string;
+
+async function deployMarket() {
     const Marketplace = await ethers.getContractFactory('Marketplace')
     console.log('starting deploying market...')
     const market = await Marketplace.deploy(token, nft) as Marketplace

@@ -10,9 +10,8 @@ import "./Token.sol";
 contract NFT is ERC721Enumerable, ERC721URIStorage, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER");
     bytes32 public constant ARTIST_ROLE = keccak256("ARTIST");
-    mapping(uint => RoyaltyInfo) public royalties;
     string private baseURI;
-    address private tokenAddress;
+    mapping(uint => RoyaltyInfo) public royalties;
 
     struct RoyaltyInfo {
         address recipient;
@@ -22,11 +21,9 @@ contract NFT is ERC721Enumerable, ERC721URIStorage, AccessControl {
     constructor (
         string memory _name, 
         string memory _symbol, 
-        string memory __baseURI, 
-        address _tokenAddress) 
+        string memory __baseURI) 
         ERC721(_name, _symbol) {
         baseURI = __baseURI;
-        tokenAddress = _tokenAddress;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
     
@@ -38,12 +35,9 @@ contract NFT is ERC721Enumerable, ERC721URIStorage, AccessControl {
         _setRoyalties(tokenId, _to, _fee);
     }
 
-    function transferWithRoaylties(address _seller, address _buyer, uint _value, uint _tokenId) public {
-        RoyaltyInfo storage royalty = royalties[_tokenId];
-        require(_seller != royalty.recipient, '_seller must no be the roaylty recipient' );
-        Token(tokenAddress).transferFrom(_buyer, royalty.recipient, (_value * royalty.fee) / 10000 );
-        Token(tokenAddress).transferFrom(_buyer, _seller, (_value * (10000 - royalty.fee)) / 10000 );
-        transferFrom(_seller, _buyer, _tokenId);   
+    function royaltyInfo(uint _tokenId, uint _value) public view returns(address recipient, uint fee) {
+        recipient = royalties[_tokenId].recipient;
+        fee = ( _value * royalties[_tokenId].fee ) / 10000;
     }
 
     function _setRoyalties(uint _tokenId, address _recipient, uint _fee) internal {

@@ -74,7 +74,8 @@ module.exports = {
       chainId: 97,
       gasPrice: 'auto',
       // gasLimit: 10000000,
-      accounts: { mnemonic: mnemonic },
+    //  accounts: { mnemonic: mnemonic },
+      accounts: [`${process.env.PRIVATE_KEY3}`]
     },
     bsc: {
       url: 'https://bsc-dataseed.binance.org/',
