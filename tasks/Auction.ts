@@ -2,7 +2,6 @@ import { task } from 'hardhat/config'
 const dotenv = require('dotenv')
 const fs = require('fs')
 
-
 task('start-auction', 'start auction')
 	.addParam('itemid', 'The ID of the NFT Item')
 	.addParam('minprice', 'The initial price for the NFT Item')

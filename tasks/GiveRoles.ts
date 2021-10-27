@@ -2,7 +2,6 @@ import { task } from 'hardhat/config'
 const dotenv = require('dotenv')
 const fs = require('fs')
 
-
 task('grantArtistRole', 'Gives role to the artist')
 	.addParam('user', 'The address of the user')
     .addParam('role', 'keccak256 of the role')

@@ -2,7 +2,6 @@ import { task } from 'hardhat/config'
 const dotenv = require('dotenv')
 const fs = require('fs')
 
-
 task('createNFT', 'Creates NFT')
 	.addParam('uri', 'Metadata URI of NFT')
     .addParam('fee', 'Royalty payment to the creator')
