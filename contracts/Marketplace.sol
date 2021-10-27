@@ -5,8 +5,6 @@ import "./Token.sol";
 import './NFT.sol';
 
 contract Marketplace is AccessControl {
-    bytes32 public constant ARTIST_ROLE = keccak256("ARTIST");
-
     uint public auctionId;
     address public tokenAddress;
     address public nftAddress;
@@ -104,7 +102,7 @@ contract Marketplace is AccessControl {
 
     /// @dev Creates NFT
     /// @param _tokenURI Metadata URI of NFT
-    /// @param _fee Royalty payment to the creator (in percents)
+    /// @param _fee Royalty payment to the creator
     function createNFT(
         string memory _tokenURI,
         uint _fee) 
@@ -165,12 +163,12 @@ contract Marketplace is AccessControl {
         if(primarySale == false) {
             Token(tokenAddress).transferFrom(msg.sender, item.creator, item.price);
             NFT(nftAddress).transferFrom(item.creator, msg.sender, item.tokenId);
-            items[_itemId].primarySale = true;
+            item.primarySale = true;
         } else {
             NFT(nftAddress).transferWithRoaylties(item.owner, msg.sender, item.price, item.tokenId); 
         }
-        items[_itemId].owner = msg.sender;
-        items[_itemId].state = State.FROZEN;
+        item.owner = msg.sender;
+        item.state = State.FROZEN;
         emit Sale (
             item.tokenId,
             previousOwner,
@@ -191,7 +189,7 @@ contract Marketplace is AccessControl {
         ifItemOwner(_itemId)
         exists(_itemId) external {
             require(_minPrice > 0, "_minPrice  must be > 0");
-            require(_duration >= 86400, "_duration must be more the one day");
+            require(_duration >= 400, "_duration must be more the one day");
             auctions[auctionId] = Auction(
                 _itemId,
                 _minPrice,
@@ -250,9 +248,8 @@ contract Marketplace is AccessControl {
         require(auction.minPrice > 0, 'that auction does not exist');
         require(_bid > auction.currentBestBid, 'the offered bid must be higher the current one');
         require(block.timestamp < (auction.startDate + auction.duration), 'that auction has ended');
-        uint balance = Token(tokenAddress).balanceOf(msg.sender);
-        require(balance >= _bid, 'the balance of a caller must be enough for that bid');
-        auctions[_auctionId].currentBestBid = _bid;
-        auctions[_auctionId].currentRecipient = msg.sender;
+        require(Token(tokenAddress).balanceOf(msg.sender) >= _bid, 'the balance of a caller must be enough for that bid');
+        auction.currentBestBid = _bid;
+        auction.currentRecipient = msg.sender;
     }
 }

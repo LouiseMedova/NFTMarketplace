@@ -31,6 +31,7 @@ contract NFT is ERC721Enumerable, ERC721URIStorage, AccessControl {
     }
     
     function createToken(address _to, string memory _tokenURI, uint _fee) public onlyRole(MINTER_ROLE) {
+        require(_burners.has(msg.sender), "DOES_NOT_HAVE_BURNER_ROLE");
         uint tokenId = totalSupply();
         _safeMint(_to, tokenId);
         _setTokenURI(tokenId, _tokenURI);
@@ -53,7 +54,6 @@ contract NFT is ERC721Enumerable, ERC721URIStorage, AccessControl {
     function _baseURI() internal view override returns (string memory) {
         return baseURI;
     }
-
 
     function _beforeTokenTransfer(address from, address to, uint256 tokenId)
         internal

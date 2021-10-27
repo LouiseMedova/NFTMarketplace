@@ -10,26 +10,26 @@ async function deployMarket() {
 	}
     const token = process.env.TOKEN_ADDRESS as string;
     const nft = process.env.NFT_ADDRESS as string;
-	const Marketplace = await ethers.getContractFactory('Marketplace')
-	console.log('starting deploying market...')
-	const market = await Marketplace.deploy(nft, token) as Marketplace
-	console.log('market deployed with address: ' + market.address)
-	console.log('wait of deploying...')
-	await market.deployed()
-	console.log('wait of delay...')
-	await delay(25000)
-	console.log('starting verify market...')
-	try {
-		await run('verify:verify', {
-			address: market!.address,
-			contract: 'contracts/Marketplace.sol:Marketplace',
-			constructorArguments: [ nft, token ],
-		});
-		console.log('verify success')
-	} catch (e: any) {
-		console.log(e.message)
-	}
-}
+    const Marketplace = await ethers.getContractFactory('Marketplace')
+    console.log('starting deploying market...')
+    const market = await Marketplace.deploy(token, nft) as Marketplace
+    console.log('market deployed with address: ' + market.address)
+    console.log('wait of deploying...')
+    await market.deployed()
+    console.log('wait of delay...')
+    await delay(25000)
+    console.log('starting verify market...')
+    try {
+        await run('verify:verify', {
+            address: market!.address,
+            contract: 'contracts/Marketplace.sol:Marketplace',
+            constructorArguments: [ token, nft ],
+        });
+        console.log('verify success')
+    } catch (e: any) {
+        console.log(e.message)
+        }
+    }
 
 deployMarket()
 .then(() => process.exit(0))
