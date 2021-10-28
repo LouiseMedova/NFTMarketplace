@@ -236,7 +236,7 @@ contract Marketplace is AccessControl {
     /// @param _tokenId The NFT token ID
     function _transferWithRoaylties(address _seller, address _buyer, uint _price, uint _tokenId) public {
         (address recipient, uint fee) = NFT(nftAddress).royaltyInfo(_tokenId, _price);
-        if(_seller == recipient || fee < 0) {
+        if(_seller == recipient || fee <= 0) {
             Token(tokenAddress).transferFrom(_buyer, _seller, _price);
             NFT(nftAddress).transferFrom(_seller, _buyer, _tokenId);
         } else {
