@@ -4,16 +4,20 @@ pragma solidity 0.8.6;
 import "./Token.sol";
 import './NFT.sol';
 
-contract Marketplace is AccessControl {
+contract Market is AccessControl {
+    bytes32 public constant BRIDGE_ROLE = keccak256("BRIDGE");
+
     uint public auctionId;
     address public tokenAddress;
     address public nftAddress;
-
+    uint public chainId;
+    
     //events
     event ItemCreated (
         uint tokenId,
         address creator,
-        uint price
+        uint price,
+        uint chainId
     );
 
     event SaleStarted (
@@ -60,13 +64,16 @@ contract Marketplace is AccessControl {
 
     enum State  {
         FROZEN,
-        SALE
+        SALE,
+        LOCKED
     }
 
     struct Item {
+        uint tokenId;
         address owner;
         State state;
         uint price;
+        uint createdOnChain;
     }
 
     struct Auction {
@@ -81,10 +88,15 @@ contract Marketplace is AccessControl {
 
     mapping (uint => Item) public tokenIdToItems;
     mapping(uint => Auction) public auctions;
+    // NFTs received from other chain
+    mapping(uint => bool) public alreadyCopiedNfts;
+    // Mapping from NFT IDs from other chain to NFT IDs created on that chain
+    mapping(uint => uint) public correspondingIds;
     
-    constructor (address _tokenAddress, address _nftAddress) {
+    constructor (address _tokenAddress, address _nftAddress, uint _chainId) {
         tokenAddress = _tokenAddress;
         nftAddress = _nftAddress;
+        chainId = _chainId;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
@@ -94,19 +106,9 @@ contract Marketplace is AccessControl {
     function createNFT(
         string memory _tokenURI,
         uint _fee) 
-        public  {
+        external  {
             uint tokenId = NFT(nftAddress).totalSupply();
-            NFT(nftAddress).createToken(msg.sender, _tokenURI, _fee);
-            tokenIdToItems[tokenId] = Item(
-                msg.sender,
-                State.FROZEN,
-                0
-            );
-            emit ItemCreated (
-                tokenId,
-                msg.sender,
-                0
-            );
+            _createNFT(tokenId, msg.sender, _tokenURI, _fee, chainId);
         }
 
     /// @dev Starts secondary sales
@@ -116,14 +118,16 @@ contract Marketplace is AccessControl {
         exists(_tokenId)
         ifTokenOwner(_tokenId) 
         public {
-        require(_price > 0, '_price must be > 0');
-        tokenIdToItems[_tokenId].state = State.SALE;
-        tokenIdToItems[_tokenId].price = _price;
-        emit SaleStarted(
-            _tokenId, 
-            tokenIdToItems[_tokenId].owner, 
-            tokenIdToItems[_tokenId].price
-        );
+            require(_price > 0, '_price must be > 0');
+            Item storage item = tokenIdToItems[_tokenId];
+            require(item.state != State.LOCKED, 'NFT must not be locked');
+            item.state = State.SALE;
+            item.price = _price;
+            emit SaleStarted(
+                _tokenId, 
+                item.owner, 
+                item.price
+            );
     }
 
     /// @dev Stops sale
@@ -163,7 +167,7 @@ contract Marketplace is AccessControl {
         ifTokenOwner(_tokenId)
         exists(_tokenId) external {
             require(_minPrice > 0, "_minPrice  must be > 0");
-            require(_duration >= 400, "_duration must be more than one day");
+            require(_duration >= 86400, "_duration must be more than one day");
             tokenIdToItems[_tokenId].state = State.FROZEN;
             auctions[auctionId] = Auction(
                 _tokenId,
@@ -215,6 +219,74 @@ contract Marketplace is AccessControl {
         }
     }
 
+    /// @dev Locks NFT token when it is traded on another chain
+    /// @param _tokenId The NFT ID
+    function lock(uint _tokenId) onlyRole(BRIDGE_ROLE) public {
+        tokenIdToItems[_tokenId].state = State.LOCKED;
+    }
+
+    /// @dev Unlocks NFT token when it is redeemed from another chain
+    /// @dev That NFT must be created on that chain
+    /// @param _tokenId The NFT ID
+    function unlock(uint _tokenId) onlyRole(BRIDGE_ROLE) public {
+        tokenIdToItems[_tokenId].state = State.FROZEN;
+    }
+
+    /// @dev Unlocks NFT token when it is redeemed from another chain
+    /// @dev That NFT must be created on another chain
+    /// @param _tokenId The NFT ID
+    function unlock(
+        uint _tokenId, 
+        address _creator,
+        string memory _uri, 
+        uint _fee,
+        uint _chainId) 
+        onlyRole(BRIDGE_ROLE) public {
+        // If that NFT is transferred to that market not for the first time
+        if (alreadyCopiedNfts[_tokenId]) {
+            tokenIdToItems[correspondingIds[_tokenId]].state = State.FROZEN;
+        } else {
+             correspondingIds[_tokenId] = NFT(nftAddress).totalSupply();
+             alreadyCopiedNfts[_tokenId] = true;
+            _createNFT(_tokenId, _creator, _uri, _fee, _chainId);
+        }
+    }
+
+    /// @dev Returns inforamtion about item
+    /// @param _tokenId The NFT ID
+    function getItem(uint _tokenId) public view returns(Item memory item) {
+        item = tokenIdToItems[_tokenId];
+    }
+
+    /// @dev Creates NFT
+    /// @param _tokenURI Metadata URI of NFT
+    /// @param _fee Royalty payment to the creator
+    function _createNFT(
+        uint _tokenId,
+        address creator,
+        string memory _tokenURI,
+        uint _fee,
+        uint _chainId) 
+        internal  {
+            // `tokenId` on that chain
+            // `_tokenId` can be ID either on that chain or on another chain
+            uint tokenId = NFT(nftAddress).totalSupply();
+            NFT(nftAddress).createToken(creator, _tokenURI, _fee);
+            tokenIdToItems[tokenId] = Item(
+                _tokenId,
+                creator,
+                State.FROZEN,
+                0,
+                _chainId
+            );
+            emit ItemCreated (
+                _tokenId,
+                creator,
+                0,
+                _chainId
+            );
+        }
+    
     /// @dev Checks that auction exists, has not ended, the offered bid is higher than the current one  and a user has enough funds 
     /// @dev Updates the current auction state
     /// @param _auctionId The ID of the auction
@@ -234,7 +306,7 @@ contract Marketplace is AccessControl {
     /// @param _buyer The buyer of the NFT token
     /// @param _price The price of the NFT token
     /// @param _tokenId The NFT token ID
-    function _transferWithRoaylties(address _seller, address _buyer, uint _price, uint _tokenId) public {
+    function _transferWithRoaylties(address _seller, address _buyer, uint _price, uint _tokenId)  internal {
         (address recipient, uint fee) = NFT(nftAddress).royaltyInfo(_tokenId, _price);
         if(_seller == recipient || fee <= 0) {
             Token(tokenAddress).transferFrom(_buyer, _seller, _price);

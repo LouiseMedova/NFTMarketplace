@@ -13,7 +13,7 @@ contract NFT is ERC721Enumerable, ERC721URIStorage, AccessControl {
     mapping(uint => RoyaltyInfo) public royalties;
 
     struct RoyaltyInfo {
-        address recipient;
+        address artist;
         uint fee;
     }
 
@@ -34,9 +34,13 @@ contract NFT is ERC721Enumerable, ERC721URIStorage, AccessControl {
         _setRoyalties(tokenId, _to, _fee);
     }
 
-    function royaltyInfo(uint _tokenId, uint _value) public view returns(address recipient, uint fee) {
-        recipient = royalties[_tokenId].recipient;
+    function royaltyInfo(uint _tokenId, uint _value) public view returns(address artist, uint fee) {
+        artist = royalties[_tokenId].artist;
         fee = ( _value * royalties[_tokenId].fee ) / 10000;
+    }
+
+    function getFee(uint _tokenId) public view returns(uint fee){
+        fee = royalties[_tokenId].fee;
     }
 
     function _setRoyalties(uint _tokenId, address _recipient, uint _fee) internal {

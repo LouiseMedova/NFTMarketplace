@@ -82,10 +82,10 @@ describe('Contract: NFT', () => {
 			expect(await nft.tokenOfOwnerByIndex(user1.address,1)).to.equal(0);	
 			expect(await nft.tokenOfOwnerByIndex(user0.address,0)).to.equal(1);	
 		})
-		
+
 		it('should set royalties', async() => {
 			const royalty = await nft.royalties(0);
-			expect(royalty.recipient).to.equal(user0.address);
+			expect(royalty.artist).to.equal(user0.address);
 			expect(royalty.fee).to.equal(500);	
 		})
 	})

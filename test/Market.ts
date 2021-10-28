@@ -5,6 +5,7 @@ import BigNumber from 'bignumber.js'
 BigNumber.config({ EXPONENTIAL_AT: 60 })
 
 import Web3 from 'web3'
+import {  BytesLike } from '@ethersproject/bytes';
 // @ts-ignore
 const web3 = new Web3(network.provider) as Web3
 
@@ -13,9 +14,9 @@ require('@openzeppelin/test-helpers/configure')({
   });
   
 const time = require('@openzeppelin/test-helpers')
-import { Token, NFT, Marketplace } from '../typechain'
+import { Token, NFT, Market} from '../typechain'
 
-let market: Marketplace
+let market: Market
 let nft: NFT
 let token: Token
 let admin: SignerWithAddress
@@ -23,21 +24,22 @@ let artist: SignerWithAddress
 let user1: SignerWithAddress
 let user2: SignerWithAddress
 
-
+const chainEth = 4;
 
 describe('Contract: Market', () => {
 	beforeEach(async () => {
 		[admin, artist, user1, user2] = await ethers.getSigners()
 
 		let Token = await ethers.getContractFactory('Token')
-		token = await Token.deploy('My Custom Token', 'MCT') as Token
+		token = await Token.deploy('My Custom Token 1', 'MCT1') as Token
 
 		let NFT = await ethers.getContractFactory('NFT')
-		nft = await NFT.deploy('My First NFT', 'MFN','https://') as NFT
+		nft = await NFT.deploy('My First NFT 1', 'MFN 1','https://') as NFT
 
-		let Marketplace = await ethers.getContractFactory('Marketplace')
-		market = await Marketplace.deploy(token.address, nft.address) as Marketplace
-		// give roles to marketplace and nft contracts
+		let Market = await ethers.getContractFactory('Market')
+		market = await Market.deploy(token.address, nft.address, chainEth) as Market
+
+		// give roles to marketplace, nft and bridge contracts
 		const artist_role = web3.utils.keccak256("ARTIST")
 		const minter = web3.utils.keccak256("MINTER")
 		await nft.grantRole(minter, market.address);
@@ -47,9 +49,10 @@ describe('Contract: Market', () => {
 		await nft.connect(user1).setApprovalForAll(market.address, true);
 		
 		await market.connect(artist).createNFT(
-			"metadata-url.com/my-metadata_1",
+			"metadata-url.com/my-metadata_0",
 			500
-		)		
+		)	
+		
 		await token.transfer(user1.address, 1000);
 		await token.transfer(user2.address, 1000);
 		await token.connect(user1).approve(market.address, 1000);
@@ -59,14 +62,15 @@ describe('Contract: Market', () => {
 	describe('create NFT', () => {
 		it('should create NFT', async () => {	
 			await expect(market.connect(artist).createNFT(
-				"metadata-url.com/my-metadata_2",
+				"metadata-url.com/my-metadata_1",
 				10
 			))
 				.to.emit(market, 'ItemCreated')
 				.withArgs(
 					1,
 					artist.address,
-					0
+					0, 
+					chainEth
 				)
 		})
 	})
