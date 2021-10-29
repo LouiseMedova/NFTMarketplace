@@ -74,7 +74,9 @@ describe('Contract: Market', () => {
 		await bridge2.grantRole(validator_role, validator.address)
 		// approve marketplace to transfer NFTs of users
 		await nft1.connect(artist).setApprovalForAll(market1.address, true);
+		await nft2.connect(artist).setApprovalForAll(market2.address, true);
 		await nft1.connect(user1).setApprovalForAll(market1.address, true);
+		await nft2.connect(user1).setApprovalForAll(market2.address, true);
 		
 		await market1.connect(artist).createNFT(
 			"metadata-url.com/my-metadata_0",
@@ -90,6 +92,10 @@ describe('Contract: Market', () => {
 		await token1.transfer(user2.address, 1000);
 		await token1.connect(user1).approve(market1.address, 1000);
 		await token1.connect(user2).approve(market1.address, 1000);
+		await token2.transfer(user1.address, 1000);
+		await token2.transfer(user2.address, 1000);
+		await token2.connect(user1).approve(market2.address, 1000);
+		await token2.connect(user2).approve(market2.address, 1000);
 
 		nonce = 1;
 		tokenId = 0;
@@ -122,9 +128,10 @@ describe('Contract: Market', () => {
 						nonce,
 						signature
 					);
-			let item = await market1.tokenIdToItems(0);
-			// Item must be in locked state on market1
+			let item = await market1.tokenIdToItems(0);			
+			// Item must be in locked state on market1 and market1 must the owner of the NFT
 			expect(item.state).to.equal(2);
+			expect(item.owner).to.equal(market1.address)
 			
 			await bridge2.connect(artist).redeem(
 				chainEth,
@@ -148,6 +155,40 @@ describe('Contract: Market', () => {
 			expect(item.price).to.equal(0);
 			expect(item.createdOnChain).to.equal(chainEth);
 			expect(id).to.equal(1);	
+		})
+		
+		it('should revert if swap is called not by the NFT owner', async() => {
+			await expect(bridge1.connect(user1).initSwap(
+				chainEth, 
+				chainBsc, 
+				user1.address,
+				0,
+				nonce,
+				signature
+				))
+				.to.be.revertedWith('only NFT owner of NFT can transfer to another chain')
+		})
+
+		it('NFT owner cannot do anything if the NFT is locked', async() => {
+			await bridge1.connect(artist).initSwap(
+				chainEth, 
+				chainBsc, 
+				artist.address,
+				0,
+				nonce,
+				signature
+				);
+			await expect(
+				market1.connect(artist).startSale(0, 100))
+				.to.be.revertedWith('A caller must be the owner of that token')
+
+			const item = await market1.tokenIdToItems(0);
+			await expect(
+				nft1.connect(artist).transferFrom(
+					artist.address, 
+					user1.address,
+					item.tokenId)).
+					to.be.revertedWith('ERC721: transfer caller is not owner nor approved')
 		})
 
 		it('should return NFT from other chain', async() => {
@@ -211,6 +252,64 @@ describe('Contract: Market', () => {
 			)
 			const item = await market1.tokenIdToItems(0);
 			expect(item.state).to.equal(0);	
+		})
+
+		it('should sell nft on another chain and return it back', async() => {
+			await bridge1.connect(artist).initSwap(
+				chainEth, 
+				chainBsc, 
+				artist.address,
+				0,
+				nonce,
+				signature
+				)
+	
+			await bridge2.connect(artist).redeem(
+				chainEth,
+				chainBsc,
+				artist.address,
+				artist.address,
+				0,
+				'https://metadata-url.com/my-metadata_0',
+				500,
+				chainEth,
+				nonce,
+				signature
+			)
+
+			//start sale
+			const id = await market2.correspondingIds(0);			
+			await market2.connect(artist).startSale(id, 100);
+			await market2.connect(user1).buyNFT(id)
+			
+			//user1 transfers NFT back
+			const message = web3.utils.keccak256(web3.eth.abi.encodeParameters(
+				['uint256','uint256','address','address','uint256','uint256','uint256'],
+				[chainBsc, chainEth, user1.address, user1.address, 0, chainEth, nonce]))				
+			const signature2 = await web3.eth.sign(message, validator.address);
+			await bridge2.connect(user1).initSwap(
+				chainBsc, 
+				chainEth, 
+				user1.address,
+				id,
+				nonce,
+				signature2
+				)
+			await bridge1.connect(artist).redeem(
+				chainBsc,
+				chainEth,
+				user1.address,
+				user1.address,
+				0,
+				'https://metadata-url.com/my-metadata_0',
+				500,
+				chainEth,
+				nonce,
+				signature2
+			)
+			const item1 = await market1.tokenIdToItems(0)
+			expect(item1.owner).to.equal(user1.address)
+			expect(item1.state).to.equal(0)			
 		})
 	})
 })

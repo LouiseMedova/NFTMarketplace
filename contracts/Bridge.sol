@@ -102,6 +102,7 @@ contract Bridge is AccessControl, ReentrancyGuard{
           onlyAllowedChainId(_chainTo)
           external {
             Market.Item memory item = Market(marketAddress).getItem(_tokenId);
+            require(NFT(nftAddress).ownerOf(_tokenId) == msg.sender, 'only NFT owner of NFT can transfer to another chain');
             bytes32 hash = keccak256(abi.encode(
                 _chainFrom, 
                 _chainTo,
@@ -166,8 +167,8 @@ contract Bridge is AccessControl, ReentrancyGuard{
             bytes32 _hashToEth = ECDSA.toEthSignedMessageHash(hash);
             address validator = ECDSA.recover(_hashToEth, _signature);
             require(hasRole(VALIDATOR, validator), 'wrong validator');
-            if (_createdOnChain == _chainTo) {
-                Market(marketAddress).unlock(_tokenId);
+            if (_createdOnChain == _chainTo || Market(marketAddress).copiedNfts(_tokenId)) {
+                Market(marketAddress).unlock(_tokenId, _recipient);
             } else {
                 Market(marketAddress).unlock(_tokenId, _recipient, _uri, _fee, _createdOnChain);
             }

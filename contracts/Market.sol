@@ -89,7 +89,7 @@ contract Market is AccessControl {
     mapping (uint => Item) public tokenIdToItems;
     mapping(uint => Auction) public auctions;
     // NFTs received from other chain
-    mapping(uint => bool) public alreadyCopiedNfts;
+    mapping(uint => bool) private alreadyCopiedNfts;
     // Mapping from NFT IDs from other chain to NFT IDs created on that chain
     mapping(uint => uint) public correspondingIds;
     
@@ -223,33 +223,41 @@ contract Market is AccessControl {
     /// @param _tokenId The NFT ID
     function lock(uint _tokenId) onlyRole(BRIDGE_ROLE) public {
         tokenIdToItems[_tokenId].state = State.LOCKED;
+        NFT(nftAddress).transferFrom(
+            tokenIdToItems[_tokenId].owner, 
+            address(this), 
+            _tokenId);
+        tokenIdToItems[_tokenId].owner = address(this);
     }
 
     /// @dev Unlocks NFT token when it is redeemed from another chain
-    /// @dev That NFT must be created on that chain
+    /// @dev That NFT is either created on that chain or has already been transferred to the market
     /// @param _tokenId The NFT ID
-    function unlock(uint _tokenId) onlyRole(BRIDGE_ROLE) public {
+    function unlock(uint _tokenId, address _owner) onlyRole(BRIDGE_ROLE) public {
         tokenIdToItems[_tokenId].state = State.FROZEN;
+        tokenIdToItems[_tokenId].owner = _owner;
+         NFT(nftAddress).transferFrom(
+            address(this),
+            _owner, 
+            _tokenId);
     }
 
     /// @dev Unlocks NFT token when it is redeemed from another chain
-    /// @dev That NFT must be created on another chain
+    /// @dev That NFT is created on another chain and is trasnferring to that chain for the first time
     /// @param _tokenId The NFT ID
+    /// @param _owner The address of the NFT owner
+    /// @param _uri The NFT metadata
+    /// @param _fee fee payament
     function unlock(
         uint _tokenId, 
-        address _creator,
+        address _owner,
         string memory _uri, 
         uint _fee,
         uint _chainId) 
         onlyRole(BRIDGE_ROLE) public {
-        // If that NFT is transferred to that market not for the first time
-        if (alreadyCopiedNfts[_tokenId]) {
-            tokenIdToItems[correspondingIds[_tokenId]].state = State.FROZEN;
-        } else {
-             correspondingIds[_tokenId] = NFT(nftAddress).totalSupply();
-             alreadyCopiedNfts[_tokenId] = true;
-            _createNFT(_tokenId, _creator, _uri, _fee, _chainId);
-        }
+            correspondingIds[_tokenId] = NFT(nftAddress).totalSupply();
+            alreadyCopiedNfts[_tokenId] = true;
+            _createNFT(_tokenId, _owner, _uri, _fee, _chainId);
     }
 
     /// @dev Returns inforamtion about item
@@ -258,12 +266,18 @@ contract Market is AccessControl {
         item = tokenIdToItems[_tokenId];
     }
 
+    /// @dev Returns true if NFT from other chain was already copied on that chain
+    /// @param _tokenId The NFT ID on another chaib
+    function copiedNfts(uint _tokenId) public view returns(bool) {
+        return alreadyCopiedNfts[_tokenId];
+    }
+
     /// @dev Creates NFT
     /// @param _tokenURI Metadata URI of NFT
     /// @param _fee Royalty payment to the creator
     function _createNFT(
         uint _tokenId,
-        address creator,
+        address _creator,
         string memory _tokenURI,
         uint _fee,
         uint _chainId) 
@@ -271,17 +285,17 @@ contract Market is AccessControl {
             // `tokenId` on that chain
             // `_tokenId` can be ID either on that chain or on another chain
             uint tokenId = NFT(nftAddress).totalSupply();
-            NFT(nftAddress).createToken(creator, _tokenURI, _fee);
+            NFT(nftAddress).createToken(_creator, _tokenURI, _fee);
             tokenIdToItems[tokenId] = Item(
                 _tokenId,
-                creator,
+                _creator,
                 State.FROZEN,
                 0,
                 _chainId
             );
             emit ItemCreated (
                 _tokenId,
-                creator,
+                _creator,
                 0,
                 _chainId
             );
