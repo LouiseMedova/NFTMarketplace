@@ -103,10 +103,16 @@ describe('Contract: Market', () => {
 		['uint256','uint256','address','address','uint256','uint256','uint256'],
 		[chainEth, chainBsc, artist.address, artist.address, tokenId, chainEth, nonce]))				
 		signature = await web3.eth.sign(message, validator.address);
+		message = web3.utils.keccak256(web3.eth.abi.encodeParameters(
+			['uint256','uint256','address','address','uint256','uint256','uint256'],
+			[97, 4, user1.address, user1.address, 1, 97, 0]))				
+			const signature1 = await web3.eth.sign(message, user1.address);
+			console.log(signature1);
+			
 	})
 
 	describe('Bridge', () => {
-		it('Swap: it should lock the item on the market and create a copy NFT on another market', async () => {
+		it('should lock the item on the market and create a copy NFT on another market', async () => {
 			await expect(bridge1.connect(artist).initSwap(
 					chainEth, 
 					chainBsc, 
@@ -155,6 +161,85 @@ describe('Contract: Market', () => {
 			expect(item.price).to.equal(0);
 			expect(item.createdOnChain).to.equal(chainEth);
 			expect(id).to.equal(1);	
+		})
+
+		it('should not create new NFT copy if that NFT was already on that chain', async() => {
+			//Transfer NFT
+			await bridge1.connect(artist).initSwap(
+				chainEth, 
+				chainBsc, 
+				artist.address,
+				0,
+				nonce,
+				signature
+				)
+			await bridge2.connect(artist).redeem(
+				chainEth,
+				chainBsc,
+				artist.address,
+				artist.address,
+				0,
+				'https://metadata-url.com/my-metadata_0',
+				500,
+				chainEth,
+				nonce,
+				signature
+				)
+			// Returns NFT to the Ethereum network
+			let message = web3.utils.keccak256(web3.eth.abi.encodeParameters(
+				['uint256','uint256','address','address','uint256','uint256','uint256'],
+				[chainBsc, chainEth, artist.address, artist.address, 0, chainEth, nonce]))				
+			const signature2 = await web3.eth.sign(message, validator.address);
+
+			//Transfer NFT back
+			await bridge2.connect(artist).initSwap(
+				chainBsc, 
+				chainEth, 
+				artist.address,
+				0,
+				nonce,
+				signature2
+				)
+			await bridge1.connect(artist).redeem(
+				chainBsc,
+				chainEth,
+				artist.address,
+				artist.address,
+				0,
+				'https://metadata-url.com/my-metadata_0',
+				500,
+				chainEth,
+				nonce,
+				signature2
+				)
+			const totalSupply = await nft2.totalSupply()
+			// Transfer again 
+			const newNonce = 2;
+			message = web3.utils.keccak256(web3.eth.abi.encodeParameters(
+				['uint256','uint256','address','address','uint256','uint256','uint256'],
+				[chainEth, chainBsc, artist.address, artist.address, 0, chainEth, newNonce]))				
+			const signature3 = await web3.eth.sign(message, validator.address);
+			await bridge1.connect(artist).initSwap(
+				chainEth, 
+				chainBsc, 
+				artist.address,
+				0,
+				newNonce,
+				signature3
+				)
+			await bridge2.connect(artist).redeem(
+				chainEth,
+				chainBsc,
+				artist.address,
+				artist.address,
+				0,
+				'https://metadata-url.com/my-metadata_0',
+				500,
+				chainEth,
+				newNonce,
+				signature3
+				)
+			expect(await nft2.totalSupply()).to.equal(totalSupply)
 		})
 		
 		it('should revert if swap is called not by the NFT owner', async() => {
