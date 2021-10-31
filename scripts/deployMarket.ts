@@ -1,18 +1,19 @@
-import { Marketplace } from '../typechain'
-import {ethers, run} from 'hardhat'
+import { Market } from '../typechain'
+import {ethers, run, network} from 'hardhat'
 import {delay} from '../utils'
 import { dotenv, fs } from "./imports";
-const envConfig = dotenv.parse(fs.readFileSync(".env"))
+const envConfig = dotenv.parse(fs.readFileSync(".env-"+network.name))
 	for (const k in envConfig) {
 		process.env[k] = envConfig[k]
-	}
+	}   
 const token = process.env.TOKEN_ADDRESS as string;
 const nft = process.env.NFT_ADDRESS as string;
+const chainId = process.env.CHAIN_ID as string;
 
 async function deployMarket() {
-    const Marketplace = await ethers.getContractFactory('Marketplace')
+    const Market = await ethers.getContractFactory('Market')
     console.log('starting deploying market...')
-    const market = await Marketplace.deploy(token, nft) as Marketplace
+    const market = await Market.deploy(token, nft, chainId) as Market
     console.log('market deployed with address: ' + market.address)
     console.log('wait of deploying...')
     await market.deployed()
@@ -22,8 +23,8 @@ async function deployMarket() {
     try {
         await run('verify:verify', {
             address: market!.address,
-            contract: 'contracts/Marketplace.sol:Marketplace',
-            constructorArguments: [ token, nft ],
+            contract: 'contracts/Market.sol:Market',
+            constructorArguments: [ token, nft, chainId ],
         });
         console.log('verify success')
     } catch (e: any) {
