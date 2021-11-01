@@ -10,7 +10,6 @@ import "@nomiclabs/hardhat-etherscan"
 
 require('dotenv').config()
 require('./tasks')
-
 const chainIds: {[key:string]: number} = {
   ganache: 1337,
   goerli: 5,
@@ -62,6 +61,7 @@ module.exports = {
       accounts: {
         mnemonic,
       },
+   //   accounts: [`${process.env.PRIVATE_KEY3}`],
       chainId: chainIds.hardhat,
     },
     mainnet: createNetworkConfig('mainnet'),

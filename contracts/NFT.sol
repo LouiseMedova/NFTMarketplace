@@ -26,17 +26,21 @@ contract NFT is ERC721Enumerable, ERC721URIStorage, AccessControl {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
     
-    function createToken(address _to, string memory _tokenURI, uint _fee) public onlyRole(MINTER_ROLE) {
+    function createToken(address _creator, address _to, string memory _tokenURI, uint _fee) public onlyRole(MINTER_ROLE) {
         require(hasRole(ARTIST_ROLE, _to), "DOES_NOT_HAVE_ARTIST_ROLE");
         uint tokenId = totalSupply();
         _safeMint(_to, tokenId);
         _setTokenURI(tokenId, _tokenURI);
-        _setRoyalties(tokenId, _to, _fee);
+        _setRoyalties(tokenId, _creator, _fee);
     }
 
     function royaltyInfo(uint _tokenId, uint _value) public view returns(address artist, uint fee) {
         artist = royalties[_tokenId].artist;
         fee = ( _value * royalties[_tokenId].fee ) / 10000;
+    }
+
+    function getArtist(uint _tokenId) public view returns(address artist) {
+        artist = royalties[_tokenId].artist;
     }
 
     function getFee(uint _tokenId) public view returns(uint fee){

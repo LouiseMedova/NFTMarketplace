@@ -108,7 +108,7 @@ contract Market is AccessControl {
         uint _fee) 
         external  {
             uint tokenId = NFT(nftAddress).totalSupply();
-            _createNFT(tokenId, msg.sender, _tokenURI, _fee, chainId);
+            _createNFT(tokenId, msg.sender, msg.sender, _tokenURI, _fee, chainId);
         }
 
     /// @dev Starts secondary sales
@@ -242,22 +242,23 @@ contract Market is AccessControl {
             _tokenId);
     }
 
-    /// @dev Unlocks NFT token when it is redeemed from another chain
+    /// @dev Creates copy of NFT token when it is redeemed from another chain
     /// @dev That NFT is created on another chain and is trasnferring to that chain for the first time
     /// @param _tokenId The NFT ID
     /// @param _owner The address of the NFT owner
     /// @param _uri The NFT metadata
     /// @param _fee fee payament
-    function unlock(
+    function createCopy(
         uint _tokenId, 
         address _owner,
+        address _artist,
         string memory _uri, 
         uint _fee,
         uint _chainId) 
         onlyRole(BRIDGE_ROLE) public {
             correspondingIds[_tokenId] = NFT(nftAddress).totalSupply();
             alreadyCopiedNfts[_tokenId] = true;
-            _createNFT(_tokenId, _owner, _uri, _fee, _chainId);
+            _createNFT(_tokenId, _owner, _artist, _uri, _fee, _chainId);
     }
 
     /// @dev Returns inforamtion about item
@@ -277,7 +278,8 @@ contract Market is AccessControl {
     /// @param _fee Royalty payment to the creator
     function _createNFT(
         uint _tokenId,
-        address _creator,
+        address _owner,
+        address _artist,
         string memory _tokenURI,
         uint _fee,
         uint _chainId) 
@@ -285,17 +287,17 @@ contract Market is AccessControl {
             // `tokenId` on that chain
             // `_tokenId` can be ID either on that chain or on another chain
             uint tokenId = NFT(nftAddress).totalSupply();
-            NFT(nftAddress).createToken(_creator, _tokenURI, _fee);
+            NFT(nftAddress).createToken(_artist, _owner, _tokenURI, _fee);
             tokenIdToItems[tokenId] = Item(
                 _tokenId,
-                _creator,
+                _owner,
                 State.FROZEN,
                 0,
                 _chainId
             );
             emit ItemCreated (
                 _tokenId,
-                _creator,
+                _owner,
                 0,
                 _chainId
             );

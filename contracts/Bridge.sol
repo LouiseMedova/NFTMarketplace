@@ -21,8 +21,6 @@ contract Bridge is AccessControl, ReentrancyGuard{
         address sender,
         address recipient,
         uint tokenId,
-        string tokenURI,
-        uint fee,
         uint createdOnChain,
         uint nonce,
         bytes signature
@@ -31,7 +29,6 @@ contract Bridge is AccessControl, ReentrancyGuard{
     event Redeem (
         uint chainFrom,
         uint chainTo,
-        address sender,
         address recipient,
         uint tokenId,
         uint nonce
@@ -48,13 +45,20 @@ contract Bridge is AccessControl, ReentrancyGuard{
         _;
     }
 
+    struct Swap {
+        Status status;
+        address artist;
+        string uri;
+        uint fee;
+    }
+
     enum Status {
         EMPTY,
         SWAP,
         REDEEM
     }
 
-    mapping (bytes32 => Status) public swaps;
+    mapping (bytes32 => Swap) public swaps;
     mapping(uint => bool) public chainList;
 
     constructor(address _nftAddress, address _marketAddress, uint _chainId) {
@@ -102,7 +106,6 @@ contract Bridge is AccessControl, ReentrancyGuard{
           onlyAllowedChainId(_chainTo)
           external {
             Market.Item memory item = Market(marketAddress).getItem(_tokenId);
-            require(NFT(nftAddress).ownerOf(_tokenId) == msg.sender, 'only NFT owner of NFT can transfer to another chain');
             bytes32 hash = keccak256(abi.encode(
                 _chainFrom, 
                 _chainTo,
@@ -112,8 +115,14 @@ contract Bridge is AccessControl, ReentrancyGuard{
                 item.createdOnChain,
                 _nonce
                 ));
-            require(swaps[hash] == Status.EMPTY, 'swap status must be EMPTY');
-            swaps[hash] =  Status.SWAP;
+            require(swaps[hash].status == Status.EMPTY, 'swap status must be EMPTY');
+            require(NFT(nftAddress).ownerOf(_tokenId) == msg.sender, 'only NFT owner can transfer to another chain');
+            address artist = NFT(nftAddress).getArtist(_tokenId);
+            swaps[hash] = Swap(
+                Status.SWAP, 
+                artist, 
+                NFT(nftAddress).tokenURI(_tokenId), 
+                NFT(nftAddress).getFee(_tokenId));
             Market(marketAddress).lock(_tokenId);
             emit InitSwap (
                 _chainFrom,
@@ -121,8 +130,6 @@ contract Bridge is AccessControl, ReentrancyGuard{
                 msg.sender,
                 _recipient,
                 item.tokenId,
-                NFT(nftAddress).tokenURI(_tokenId),
-                NFT(nftAddress).getFee(_tokenId),
                 item.createdOnChain,
                 _nonce,
                 _signature
@@ -145,8 +152,6 @@ contract Bridge is AccessControl, ReentrancyGuard{
         address _sender,
         address _recipient, 
         uint _tokenId, 
-        string memory _uri,
-        uint _fee,
         uint _createdOnChain,
         uint _nonce, 
         bytes memory _signature
@@ -163,20 +168,25 @@ contract Bridge is AccessControl, ReentrancyGuard{
                 _createdOnChain,
                 _nonce
                 ));
-            require(swaps[hash] == Status.EMPTY, 'swap status must be EMPTY');
+            require(swaps[hash].status == Status.EMPTY, 'swap status must be EMPTY');
             bytes32 _hashToEth = ECDSA.toEthSignedMessageHash(hash);
             address validator = ECDSA.recover(_hashToEth, _signature);
             require(hasRole(VALIDATOR, validator), 'wrong validator');
             if (_createdOnChain == _chainTo || Market(marketAddress).copiedNfts(_tokenId)) {
                 Market(marketAddress).unlock(_tokenId, _recipient);
             } else {
-                Market(marketAddress).unlock(_tokenId, _recipient, _uri, _fee, _createdOnChain);
+                Market(marketAddress).createCopy(
+                    _tokenId, 
+                    _recipient,
+                    swaps[hash].artist, 
+                    swaps[hash].uri, 
+                    swaps[hash].fee, 
+                    _createdOnChain);
             }
-            swaps[hash] = Status.REDEEM;
+            swaps[hash].status = Status.REDEEM;
             emit Redeem (
                 _chainFrom,
                 _chainTo,
-                _sender,
                 _recipient,
                 _tokenId,
                 _nonce

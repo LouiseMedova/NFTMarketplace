@@ -13,7 +13,6 @@ task('getBalance', 'Balance of user')
 		const token = process.env.TOKEN_ADDRESS as string;
 		const contract = await ethers.getContractAt('Token', token)
         const balance = await contract.balanceOf(user);
-	//		const balance = await contract.totalSupply();
 		console.log(balance.toString());
 	})
 
